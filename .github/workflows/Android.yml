@@ -1,22 +1,15 @@
-name: Build Android (RSDKv5u-Origins)
+name: Build Android APK
 
 on:
   push:
-  pull_request:
   workflow_dispatch:
 
 jobs:
-  build-android:
+  apk:
     runs-on: ubuntu-latest
 
-    strategy:
-      fail-fast: false
-      matrix:
-        abi: [armeabi-v7a, arm64-v8a]
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
 
@@ -30,28 +23,33 @@ jobs:
       uses: android-actions/setup-android@v3
 
     - name: Install NDK
-      run: |
-        sdkmanager "ndk;23.2.8568313"
+      run: sdkmanager "ndk;23.2.8568313"
 
-    - name: Configure CMake (Android)
+    - name: Build native libs
       env:
         ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/23.2.8568313
       run: |
-        cmake -S . -B build-android-${{ matrix.abi }} \
+        cmake -S . -B build-android \
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID=ON \
-          -DANDROID_ABI=${{ matrix.abi }} \
-          -DANDROID_PLATFORM=android-21 \
-          -DCMAKE_BUILD_TYPE=Release
+          -DANDROID_ABI=arm64-v8a \
+          -DANDROID_PLATFORM=android-21
+        cmake --build build-android
 
-    - name: Build
+    - name: Copy .so to APK project
       run: |
-        cmake --build build-android-${{ matrix.abi }} --parallel
+        mkdir -p android-apk/app/src/main/jniLibs/arm64-v8a
+        cp build-android/**/*.so android-apk/app/src/main/jniLibs/arm64-v8a/
 
-    - name: Upload artifacts
+    - name: Build APK
+      working-directory: android-apk
+      run: |
+        chmod +x ./gradlew || true
+        ./gradlew assembleRelease
+
+    - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: rsdk-android-${{ matrix.abi }}
-        path: |
-          build-android-${{ matrix.abi }}/**/*.so
-          
+        name: rsdk-origins-apk
+        path: android-apk/app/build/outputs/apk/release/*.apk
+        
