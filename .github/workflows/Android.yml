@@ -26,18 +26,24 @@ jobs:
         distribution: temurin
         java-version: 17
 
-    - name: Install Android SDK + NDK
+    - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
     - name: Install NDK
       run: |
         sdkmanager "ndk;25.2.9519653"
 
+    - name: Debug list
+      run: |
+        echo "SDK root: $ANDROID_SDK_ROOT"
+        ls -R $ANDROID_SDK_ROOT || true
+        ls -R android || true
+
     - name: Configure CMake
       env:
         ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.2.9519653
       run: |
-        cmake -S . -B build-android-${{ matrix.abi }} \
+        cmake -S android/app -B build-android-${{ matrix.abi }} \
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=${{ matrix.abi }} \
           -DANDROID_PLATFORM=android-24 \
