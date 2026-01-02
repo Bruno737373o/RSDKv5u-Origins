@@ -1,55 +1,41 @@
-name: Build Android APK
+name: Build RSDKv5 Android
 
 on:
-  push:
   workflow_dispatch:
 
 jobs:
-  apk:
+  v5-android:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: 17
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-    - name: Install NDK
-      run: sdkmanager "ndk;23.2.8568313"
+      # Este passo instala as dependências extras que o NDK precisa
+      - name: Install NDK and Tools
+        run: |
+          sdkmanager "ndk;23.2.8568313" "cmake;3.22.1"
 
-    - name: Build native libs
-      env:
-        ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/23.2.8568313
-      run: |
-        cmake -S . -B build-android \
-          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
-          -DANDROID=ON \
-          -DANDROID_ABI=arm64-v8a \
-          -DANDROID_PLATFORM=android-21
-        cmake --build build-android
+      - name: Build Android APK
+        run: |
+          cd android
+          chmod +x gradlew
+          # O comando abaixo compila o C++ via CMake automaticamente através do Gradle
+          ./gradlew assembleRelease
 
-    - name: Copy .so to APK project
-      run: |
-        mkdir -p android-apk/app/src/main/jniLibs/arm64-v8a
-        cp build-android/**/*.so android-apk/app/src/main/jniLibs/arm64-v8a/
-
-    - name: Build APK
-      working-directory: android-apk
-      run: |
-        chmod +x ./gradlew || true
-        ./gradlew assembleRelease
-
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: rsdk-origins-apk
-        path: android-apk/app/build/outputs/apk/release/*.apk
-        
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: v5-android-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          
