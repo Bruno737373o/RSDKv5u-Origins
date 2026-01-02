@@ -2,7 +2,6 @@ name: Build Android (RSDKv5u-Origins)
 
 on:
   push:
-    branches: [ "main", "master" ]
   pull_request:
   workflow_dispatch:
 
@@ -11,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
         abi: [armeabi-v7a, arm64-v8a]
 
@@ -20,7 +20,7 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Set up JDK
+    - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
@@ -31,31 +31,27 @@ jobs:
 
     - name: Install NDK
       run: |
-        sdkmanager "ndk;25.2.9519653"
+        sdkmanager "ndk;23.2.8568313"
 
-    - name: Debug list
-      run: |
-        echo "SDK root: $ANDROID_SDK_ROOT"
-        ls -R $ANDROID_SDK_ROOT || true
-        ls -R android || true
-
-    - name: Configure CMake
+    - name: Configure CMake (Android)
       env:
-        ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/25.2.9519653
+        ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/23.2.8568313
       run: |
-        cmake -S android/app -B build-android-${{ matrix.abi }} \
+        cmake -S . -B build-android-${{ matrix.abi }} \
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+          -DANDROID=ON \
           -DANDROID_ABI=${{ matrix.abi }} \
-          -DANDROID_PLATFORM=android-24 \
+          -DANDROID_PLATFORM=android-21 \
           -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
       run: |
-        cmake --build build-android-${{ matrix.abi }} --config Release
+        cmake --build build-android-${{ matrix.abi }} --parallel
 
-    - name: Upload build artifacts
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: rsdk-android-${{ matrix.abi }}
         path: |
           build-android-${{ matrix.abi }}/**/*.so
+          
