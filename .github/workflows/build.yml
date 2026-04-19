@@ -32,13 +32,27 @@ jobs:
           distribution: "zulu"
           java-version: 17
 
-      - name: Inject Amy Code
+      - name: Inject Amy and Fix Manifest
         run: |
-          # Apenas copia os arquivos, sem editar textos, para evitar o StackOverflowError
-          $objPath = "java/Game/Objects"
+          # 1. Injeta o código da Amy
+          $objPath = "java\Game\Objects"
           if (!(Test-Path $objPath)) { New-Item -ItemType Directory -Force -Path $objPath }
-          Copy-Item -Path "temp_amy/*.c" -Destination $objPath -Force
-          Copy-Item -Path "temp_amy/*.h" -Destination $objPath -Force
+          Copy-Item -Path "temp_amy\*.c" -Destination $objPath -Force
+          Copy-Item -Path "temp_amy\*.h" -Destination $objPath -Force
+
+          # 2. FIX CRASH: Adiciona permissão de gerenciamento de arquivos e exported
+          $manifest = "android/app/src/main/AndroidManifest.xml"
+          if (Test-Path $manifest) {
+              $content = Get-Content $manifest
+              # Adiciona a permissão de All Files Access no cabeçalho
+              if ($content -notmatch "MANAGE_EXTERNAL_STORAGE") {
+                  $content = $content -replace '<manifest', '<manifest xmlns:tools="http://schemas.android.com/tools"'
+                  $content = $content -replace '</manifest>', '    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />`n</manifest>'
+              }
+              # Força o suporte a armazenamento legado para evitar o crash no seletor de pasta
+              $content = $content -replace '<application', '<application android:requestLegacyExternalStorage="true" android:exported="true"'
+              $content | Set-Content $manifest
+          }
 
       - name: Build RSDKv5 Android
         working-directory: ./android
@@ -72,4 +86,3 @@ jobs:
         with:
           name: Sonic-Origins-Amy-Android16
           path: Sonic_Origins_Amy_Android16.apk
-
