@@ -1,4 +1,4 @@
-name: Build Origins Android 16 (Amy Compatible)
+name: Build Bruno Origins + Amy Mod
 
 on: workflow_dispatch
 
@@ -6,12 +6,17 @@ jobs:
   build-android:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Engine
+      - name: Checkout Your Repository
         uses: actions/checkout@v4
         with:
-          repository: thesupersonic16/RSDKv5u-Origins
           submodules: recursive
-          path: engine
+
+      # 1. Baixa o código da Amy Extra Slot
+      - name: Checkout Amy Mod Code
+        uses: actions/checkout@v4
+        with:
+          repository: KiaraGale/Sonic-Mania-Decomp-Extra-Slot-Amy
+          path: temp_amy
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -19,40 +24,39 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Patch for Android 16 Compatibility
+      # 2. Injeta o código da Amy na Engine
+      - name: Apply Amy Code
         run: |
-          # Ajusta versões de SDK para o Android 16
-          sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 34/g' engine/android/app/build.gradle || true
-          sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 34/g' engine/android/app/build.gradle || true
-          
-          # Corrige o erro de "Manifest Merger" adicionando exported="true"
-          # Isso é o que impede o erro de 'Pacote Inválido' em sistemas novos
-          sed -i '/<activity/ s/$/ android:exported="true"/' engine/android/app/src/main/AndroidManifest.xml || true
-          
-          # Garante que o nome do pacote seja único para evitar conflitos
-          sed -i 's/applicationId ".*"/applicationId "org.retrosdk.rsdkv5.amy"/g' engine/android/app/build.gradle || true
+          # Cria a pasta de objetos se não existir
+          mkdir -p java/Game/Objects
+          # Copia os arquivos .c e .h do mod para dentro da engine do Bruno
+          find temp_amy -name "*.c" -exec cp -v {} java/Game/Objects/ \;
+          find temp_amy -name "*.h" -exec cp -v {} java/Game/Objects/ \;
+          # Remove a pasta temporária para não sujar o build
+          rm -rf temp_amy
 
+      # 3. Compilação
       - name: Build APK
         run: |
-          cd engine/android
+          cd android
           chmod +x gradlew
           ./gradlew assembleDebug -Pandroid.injected.build.abi="arm64-v8a" --no-daemon
 
+      # 4. Assinatura Especial para Android 16
       - name: Prepare and Sign APK
         run: |
-          # Localiza o arquivo gerado
-          RAW_APK=$(find engine -name "*.apk" | grep -v "unaligned" | head -n 1)
+          RAW_APK=$(find . -name "*.apk" | grep -v "unaligned" | head -n 1)
           
-          # Alinhamento de memória (Obrigatório no Android 16)
-          /usr/local/lib/android/sdk/build-tools/34.0.0/zipalign -v 4 "$RAW_APK" SonicOrigins_Aligned.apk
+          # Alinhamento (Zipalign)
+          /usr/local/lib/android/sdk/build-tools/34.0.0/zipalign -v 4 "$RAW_APK" Sonic_Aligned.apk
           
-          # Assinatura digital completa (V1, V2, V3 e V4)
+          # Gerar chave e assinar (V2/V3)
           keytool -genkey -v -keystore dev.jks -keyalg RSA -keysize 2048 -validity 10000 -alias dev -storepass password -keypass password -dname "CN=Android, O=Dev, C=US"
-          /usr/local/lib/android/sdk/build-tools/34.0.0/apksigner sign --ks dev.jks --ks-key-alias dev --ks-pass pass:password --key-pass pass:password --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out Sonic_Origins_Amy_Edition.apk SonicOrigins_Aligned.apk
+          
+          /usr/local/lib/android/sdk/build-tools/34.0.0/apksigner sign --ks dev.jks --ks-key-alias dev --ks-pass pass:password --key-pass pass:password --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out Sonic_Bruno_Amy.apk Sonic_Aligned.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sonic-Origins-Amy-Edition
-          path: Sonic_Origins_Amy_Edition.apk
-          
+          name: Sonic-Origins-Amy-Build
+          path: Sonic_Bruno_Amy.apk
