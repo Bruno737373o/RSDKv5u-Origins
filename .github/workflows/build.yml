@@ -1,4 +1,4 @@
-name: Build Bruno Origins + Amy (Final SDL Fix)
+name: Build Bruno Origins + Amy (SDL Fix 17.2)
 
 on:
   workflow_dispatch:
@@ -26,12 +26,12 @@ jobs:
           # 2. Extrai na pasta JNI
           Expand-Archive -Path SDL2.zip -DestinationPath ./android/app/jni/
           
-          # 3. Move e renomeia a pasta de forma segura no Windows
-          # Remove a pasta antiga se ela já existir por algum motivo
-          if (Test-Path "android/app/jni/SDL") { Remove-Item -Recurse -Force "android/app/jni/SDL" }
+          # 3. Organiza a pasta SDL (Lógica Windows)
+          $extractedPath = "android\app\jni\SDL2-2.28.3"
+          $targetPath = "android\app\jni\SDL"
           
-          # Move o conteúdo da pasta extraída para a pasta final 'SDL'
-          Move-Item -Path "android/app/jni/SDL2-2.28.3" -Destination "android/app/jni/SDL"
+          if (Test-Path $targetPath) { Remove-Item -Recurse -Force $targetPath }
+          if (Test-Path $extractedPath) { Move-Item -Path $extractedPath -Destination $targetPath }
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -42,12 +42,12 @@ jobs:
       - name: Inject Amy and Fix Manifest
         run: |
           # 1. Injeta o código da Amy
-          $objPath = "java/Game/Objects"
+          $objPath = "java\Game\Objects"
           if (!(Test-Path $objPath)) { New-Item -ItemType Directory -Force -Path $objPath }
-          Copy-Item -Path "temp_amy/*.c" -Destination $objPath -ErrorAction SilentlyContinue
-          Copy-Item -Path "temp_amy/*.h" -Destination $objPath -ErrorAction SilentlyContinue
+          Copy-Item -Path "temp_amy\*.c" -Destination $objPath -ErrorAction SilentlyContinue
+          Copy-Item -Path "temp_amy\*.h" -Destination $objPath -ErrorAction SilentlyContinue
 
-          # 2. Fix Android 16 Exported Activity (Obrigatório para evitar 'Pacote Inválido')
+          # 2. Fix Android 16 Exported Activity (Obrigatório)
           $manifests = Get-ChildItem -Path android -Filter AndroidManifest.xml -Recurse
           foreach ($file in $manifests) {
               (Get-Content $file.FullName) -replace '<activity', '<activity android:exported="true"' | Set-Content $file.FullName
@@ -56,22 +56,22 @@ jobs:
       - name: Build RSDKv5 Android
         working-directory: ./android
         run: |
-          # Clean para garantir que o APK não saia com 3MB (corrompido)
+          # Limpa build anterior para evitar APK corrompido de 3MB
           ./gradlew.bat clean
           ./gradlew.bat assembleDebug --no-daemon -PABIFILTERS="arm64-v8a"
 
       - name: Sign and Align APK
         shell: bash
         run: |
-          # Busca o APK gerado
+          # Busca o APK real gerado
           RAW_APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
           
           if [ -z "$RAW_APK" ]; then
-            echo "ERRO: O compilador falhou antes de gerar o APK."
+            echo "ERRO: O APK não foi gerado. Verifique os logs de compilação C++."
             exit 1
           fi
           
-          # Alinhamento e Assinatura V2/V3 para Android 16
+          # Zipalign e Assinatura para Android 16
           $ANDROID_HOME/build-tools/34.0.0/zipalign -v 4 "$RAW_APK" Sonic_Aligned.apk
           
           keytool -genkey -v -keystore dev.jks -keyalg RSA -keysize 2048 -validity 10000 -alias dev -storepass password -keypass password -dname "CN=Android, O=Dev, C=US"
@@ -83,4 +83,3 @@ jobs:
         with:
           name: Sonic-Origins-Amy-Android16
           path: Sonic_Origins_Amy_Android16.apk
-          
