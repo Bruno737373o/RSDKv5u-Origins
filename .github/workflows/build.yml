@@ -49,8 +49,8 @@ jobs:
         run: |
           cd engine/android
           chmod +x gradlew
-          # Compila para 32 e 64 bits para máxima compatibilidade
-          ./gradlew assembleDebug -Pandroid.injected.build.abi="armeabi-v7a,arm64-v8a" --stacktrace
+          # O assembleDebug gera um APK já assinado com uma chave de teste
+          ./gradlew assembleDebug -Pandroid.injected.build.abi="armeabi-v7a,arm64-v8a"
 
       # 6. Localiza e faz o Upload do APK
       - name: Verify and Upload Artifacts
