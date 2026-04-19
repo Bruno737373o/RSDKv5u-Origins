@@ -1,4 +1,4 @@
-name: Build Bruno Origins + Amy (SDL Fix 17.3)
+name: Build Bruno Origins + Amy (Ultra Fix 17.4)
 
 on:
   workflow_dispatch:
@@ -18,25 +18,14 @@ jobs:
           repository: KiaraGale/Sonic-Mania-Decomp-Extra-Slot-Amy
           path: temp_amy
 
-      - name: Download and Setup SDL2
+      - name: Download SDL2
         run: |
-          # 1. Baixa o SDL2
           Invoke-WebRequest -Uri "https://libsdl.org/release/SDL2-2.28.3.zip" -OutFile "SDL2.zip"
-          
-          # 2. Extrai na pasta JNI
           Expand-Archive -Path SDL2.zip -DestinationPath ./android/app/jni/
-          
-          # 3. Renomeia a pasta (Método Infalível)
-          $parentPath = "android/app/jni"
-          $oldName = "SDL2-2.28.3"
-          $newName = "SDL"
-          
-          if (Test-Path "$parentPath/$newName") { Remove-Item -Recurse -Force "$parentPath/$newName" }
-          
-          # Entra na pasta para renomear sem erro de caminho
-          Push-Location $parentPath
-          Rename-Item -Path $oldName -NewName $newName
-          Pop-Location
+          # Renomeia de forma segura para o compilador C++ achar
+          $old = "android/app/jni/SDL2-2.28.3"
+          $new = "android/app/jni/SDL"
+          if (Test-Path $old) { Move-Item -Path $old -Destination $new }
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -46,45 +35,45 @@ jobs:
 
       - name: Inject Amy and Fix Manifest
         run: |
-          # 1. Injeta o código da Amy
+          # 1. Injeta o código da Amy na pasta Objects
           $objPath = "java/Game/Objects"
           if (!(Test-Path $objPath)) { New-Item -ItemType Directory -Force -Path $objPath }
           Copy-Item -Path "temp_amy/*.c" -Destination $objPath -ErrorAction SilentlyContinue
           Copy-Item -Path "temp_amy/*.h" -Destination $objPath -ErrorAction SilentlyContinue
 
-          # 2. Fix Android 16 Exported Activity (Essencial para instalar no seu celular)
-          $manifests = Get-ChildItem -Path android -Filter AndroidManifest.xml -Recurse
-          foreach ($file in $manifests) {
-              (Get-Content $file.FullName) -replace '<activity', '<activity android:exported="true"' | Set-Content $file.FullName
+          # 2. Fix Android 16 (Apenas o necessário no Manifesto)
+          # Isso evita o loop infinito que causou o StackOverflow
+          $manifest = "android/app/src/main/AndroidManifest.xml"
+          if (Test-Path $manifest) {
+              (Get-Content $manifest) -replace '<activity', '<activity android:exported="true"' | Set-Content $manifest
           }
 
       - name: Build RSDKv5 Android
         working-directory: ./android
         run: |
-          # Clean para garantir que o APK não venha corrompido
-          ./gradlew.bat clean
+          # Remove o 'clean' para ver se o Gradle inicializa sem erro de memória
           ./gradlew.bat assembleDebug --no-daemon -PABIFILTERS="arm64-v8a"
 
       - name: Sign and Align APK
         shell: bash
         run: |
-          # Procura o APK gerado
+          # Busca o APK final
           RAW_APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
           
           if [ -z "$RAW_APK" ]; then
-            echo "ERRO: O compilador falhou antes de gerar o APK. Verifique erros de C++ acima."
+            echo "ERRO: APK não gerado. O build falhou."
             exit 1
           fi
           
-          # Zipalign e Assinatura V2/V3 para o seu Android 16
+          # Alinhamento e Assinatura V2/V3 (Indispensável para Android 16)
           $ANDROID_HOME/build-tools/34.0.0/zipalign -v 4 "$RAW_APK" Sonic_Aligned.apk
           
           keytool -genkey -v -keystore dev.jks -keyalg RSA -keysize 2048 -validity 10000 -alias dev -storepass password -keypass password -dname "CN=Android, O=Dev, C=US"
           
-          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks dev.jks --ks-key-alias dev --ks-pass pass:password --key-pass pass:password --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out Sonic_Origins_Amy_Final.apk Sonic_Aligned.apk
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks dev.jks --ks-key-alias dev --ks-pass pass:password --key-pass pass:password --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out Sonic_Bruno_Amy_Android16.apk Sonic_Aligned.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sonic-Origins-Amy-Final
-          path: Sonic_Origins_Amy_Final.apk
+          name: Sonic-Origins-Amy-v17-4
+          path: Sonic_Bruno_Amy_Android16.apk
