@@ -1,104 +1,30 @@
-name: Build RSDKv5
+name: Build Origins + Extra Slot Amy
 
 on: workflow_dispatch
 
 jobs:
-  v5-windows:
-    runs-on: windows-2022
-    defaults:
-      run:
-        shell: msys2 {0}
-    steps:
-      - name: Checkout 
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW32
-          update: true
-          install: pkg-config make git mingw-w64-i686-gcc mingw-w64-i686-libogg mingw-w64-i686-libtheora
-      - name: Build RSDKv5 + U
-        run: |
-          make -j8 RSDK_ONLY=1 AUTOBUILD=1
-          make -j8 clean-rsdk
-          make -j8 RSDK_ONLY=1 RSDK_REVISION=3 AUTOBUILD=1
-      - name: Move artifacts
-        run: |
-          mkdir artifacts
-          mv ./bin/Windows/DX9/*.exe ./artifacts
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: v5-windows
-          path: artifacts
-
-  v5-windows-x64:
-    runs-on: windows-2022
-    defaults:
-      run:
-        shell: msys2 {0}
-    steps:
-      - name: Checkout 
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: pkg-config make git mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2 mingw-w64-x86_64-libogg mingw-w64-x86_64-libtheora
-      - name: Build RSDKv5 + U
-        run: |
-          make -j8 RSDK_ONLY=1 AUTOBUILD=1
-          make -j8 clean-rsdk
-          make -j8 RSDK_ONLY=1 RSDK_REVISION=3 AUTOBUILD=1
-      - name: Move artifacts
-        run: |
-          mkdir artifacts
-          mv ./bin/Windows/DX9/*.exe ./artifacts
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: v5-windows-x64
-          path: artifacts
-
-  v5-linux:
+  build-android:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout 
+      - name: Checkout Engine (Origins)
         uses: actions/checkout@v4
         with:
+          repository: thesupersonic16/RSDKv5u-Origins
           submodules: recursive
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install libogg-dev libsdl2-dev libtheora-dev libglew-dev libglfw3-dev
-      - name: Build RSDKv5 + U OGL
-        run: |
-          make -j8 RSDK_ONLY=1 AUTOBUILD=1
-          make -j8 clean-rsdk
-          make -j8 RSDK_ONLY=1 RSDK_REVISION=3 AUTOBUILD=1
-      - name: Build RSDKv5 + U SDL2
-        run: |
-          make -j8 RSDK_ONLY=1 SUBSYSTEM=SDL2 AUTOBUILD=1
-          make -j8 clean-rsdk
-          make -j8 RSDK_ONLY=1 SUBSYSTEM=SDL2 RSDK_REVISION=3 AUTOBUILD=1
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: v5-linux
-          path: bin/Linux
+          path: engine
 
-  v5-android:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout 
+      - name: Checkout Mod (Amy Extra Slot)
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          repository: KiaraGale/Sonic-Mania-Decomp-Extra-Slot-Amy
+          path: mod_amy
+
+      - name: Apply Mod to Engine
+        run: |
+          # Copia os arquivos do mod para dentro da engine, sobrescrevendo os originais
+          cp -R mod_amy/Game/Objects/* engine/Game/Objects/
+          # Se houver arquivos de som/gráficos no mod que precisem estar no APK:
+          # cp -R mod_amy/path/to/assets/* engine/android/app/src/main/assets/
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -109,17 +35,14 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install NDK
-        run: sdkmanager "ndk;25.2.9519653"
-
-      - name: Build Android APK
+      - name: Build APK
         run: |
-          cd android
+          cd engine/android
           chmod +x gradlew
-          ./gradlew clean assembleRelease -Pandroid.injected.build.abi="armeabi-v7a,arm64-v8a"
+          ./gradlew assembleRelease -Pandroid.injected.build.abi="armeabi-v7a,arm64-v8a"
         
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: v5-android-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          name: Origins-Amy-ExtraSlot
+          path: engine/android/app/build/outputs/apk/**/*.apk
