@@ -47,10 +47,19 @@ jobs:
         run: |
           cd engine/android
           chmod +x gradlew
+          # Gerando o APK para as arquiteturas comuns
           ./gradlew assembleRelease -Pandroid.injected.build.abi="armeabi-v7a,arm64-v8a"
-        
+
+      - name: Locate APK (Debug)
+        run: |
+          echo "Buscando arquivos APK gerados..."
+          find . -name "*.apk"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Origins-Amy-ExtraSlot
-          path: engine/android/app/build/outputs/apk/**/*.apk
+          # O caminho '**/build/outputs/apk/**/*.apk' busca em qualquer lugar do projeto
+          path: |
+            **/build/outputs/apk/**/*.apk
+          if-no-files-found: error
