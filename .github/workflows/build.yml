@@ -1,4 +1,4 @@
-name: Build Origins + Extra Slot Amy (Android 16 Fix)
+name: Build Origins + Extra Slot Amy (Final Fix)
 
 on: workflow_dispatch
 
@@ -27,37 +27,44 @@ jobs:
 
       - name: Apply Mod Code
         run: |
+          # Garante que a pasta de destino existe
+          mkdir -p engine/Game/Objects
+          # Copia arquivos do mod para a engine
           find mod_amy -name "*.c" -exec cp -v {} engine/Game/Objects/ \;
           find mod_amy -name "*.h" -exec cp -v {} engine/Game/Objects/ \;
 
-      - name: Build APK (Debug Mode)
+      - name: Build APK
         run: |
           cd engine/android
           chmod +x gradlew
-          # Usamos assembleDebug para garantir que o arquivo seja criado
-          ./gradlew assembleDebug -Pandroid.injected.build.abi="arm64-v8a"
+          # Compila tudo. O 'assemble' sem sufixo gera todos os variantes disponíveis
+          ./gradlew assemble -Pandroid.injected.build.abi="arm64-v8a"
 
       - name: Prepare and Sign APK
         run: |
-          # 1. Localiza o APK na pasta debug (que agora temos certeza que existe)
-          RAW_APK=$(find engine/android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          # 1. Busca QUALQUER APK gerado dentro da pasta engine
+          RAW_APK=$(find engine -name "*.apk" | grep -v "unaligned" | head -n 1)
+          
+          if [ -z "$RAW_APK" ]; then
+            echo "ERRO: Nenhum APK foi encontrado após o build."
+            exit 1
+          fi
+          
           echo "APK encontrado em: $RAW_APK"
           
-          # 2. Zipalign (Ajustando para o caminho correto do build-tools)
-          # O Android 16 exige esse alinhamento para leitura rápida de memória
+          # 2. Zipalign (Alinhamento obrigatório para Android 16)
           /usr/local/lib/android/sdk/build-tools/34.0.0/zipalign -v 4 "$RAW_APK" SonicOrigins_Aligned.apk
           
-          # 3. Gera chave de assinatura temporária
+          # 3. Gera chave de assinatura
           keytool -genkey -v -keystore dev-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias dev-alias -storepass password -keypass password -dname "CN=Android, OU=Dev, O=Game, L=World, ST=World, C=US"
           
-          # 4. Assina com APKSigner (Esquema V2/V3 para compatibilidade total)
+          # 4. Assina com APKSigner (V2/V3 para Android 16)
           /usr/local/lib/android/sdk/build-tools/34.0.0/apksigner sign --ks dev-key.jks --ks-key-alias dev-alias --ks-pass pass:password --key-pass pass:password --out SonicOrigins_Final.apk SonicOrigins_Aligned.apk
           
-          echo "Processo concluído com sucesso!"
+          echo "Assinatura concluída!"
 
       - name: Upload Final APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sonic-Origins-Android16
+          name: Sonic-Origins-Android16-Final
           path: SonicOrigins_Final.apk
-          
