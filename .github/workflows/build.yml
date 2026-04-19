@@ -21,10 +21,18 @@ jobs:
 
       - name: Apply Mod to Engine
         run: |
-          # Copia os arquivos do mod para dentro da engine, sobrescrevendo os originais
-          cp -R mod_amy/Game/Objects/* engine/Game/Objects/
-          # Se houver arquivos de som/gráficos no mod que precisem estar no APK:
-          # cp -R mod_amy/path/to/assets/* engine/android/app/src/main/assets/
+          # Procura onde estão os arquivos de objetos no mod e copia para a engine
+          # O comando find garante que pegamos os arquivos .c e .h mesmo se a estrutura mudar
+          find mod_amy -name "*.c" -exec cp {} engine/Game/Objects/ \;
+          find mod_amy -name "*.h" -exec cp {} engine/Game/Objects/ \;
+          
+          # Caso o mod tenha uma estrutura específica de subpastas em Objects, 
+          # tentamos uma cópia recursiva forçada se a pasta existir:
+          if [ -d "mod_amy/Game/Objects" ]; then
+            cp -rf mod_amy/Game/Objects/* engine/Game/Objects/
+          else
+            echo "Pasta Game/Objects não encontrada no mod, usando busca por extensões."
+          fi
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
