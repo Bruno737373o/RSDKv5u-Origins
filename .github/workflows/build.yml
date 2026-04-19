@@ -27,9 +27,10 @@ jobs:
 
       - name: Apply Mod Code
         run: |
-          # Remove qualquer arquivo que esteja bloqueando a criação da pasta
-          rm -rf engine/Game/Objects
-          # Cria a estrutura de pastas corretamente
+          # Remove o arquivo/pasta 'Game' que está causando o conflito
+          rm -rf engine/Game
+          
+          # Cria a estrutura de pastas do zero
           mkdir -p engine/Game/Objects
           
           # Copia arquivos do mod para a engine
@@ -40,34 +41,31 @@ jobs:
         run: |
           cd engine/android
           chmod +x gradlew
-          # assembleDebug é mais rápido e garante a criação do arquivo
+          # assembleDebug para garantir a geração do arquivo assinado para teste
           ./gradlew assembleDebug -Pandroid.injected.build.abi="arm64-v8a"
 
       - name: Prepare and Sign APK
         run: |
-          # 1. Busca QUALQUER APK gerado dentro da pasta engine
+          # 1. Busca o APK gerado
           RAW_APK=$(find engine -name "*.apk" | grep -v "unaligned" | head -n 1)
           
           if [ -z "$RAW_APK" ]; then
-            echo "ERRO: Nenhum APK foi encontrado após o build."
+            echo "ERRO: Nenhum APK foi encontrado."
             exit 1
           fi
           
-          echo "APK encontrado em: $RAW_APK"
-          
-          # 2. Zipalign (Alinhamento obrigatório para Android 16)
+          # 2. Zipalign (Indispensável para o Android 16)
           /usr/local/lib/android/sdk/build-tools/34.0.0/zipalign -v 4 "$RAW_APK" SonicOrigins_Aligned.apk
           
           # 3. Gera chave de assinatura
           keytool -genkey -v -keystore dev-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias dev-alias -storepass password -keypass password -dname "CN=Android, OU=Dev, O=Game, L=World, ST=World, C=US"
           
-          # 4. Assina com APKSigner (V2/V3 para Android 16)
+          # 4. Assina com APKSigner (V2/V3)
           /usr/local/lib/android/sdk/build-tools/34.0.0/apksigner sign --ks dev-key.jks --ks-key-alias dev-alias --ks-pass pass:password --key-pass pass:password --out SonicOrigins_Final.apk SonicOrigins_Aligned.apk
-          
-          echo "Assinatura concluída!"
 
       - name: Upload Final APK
         uses: actions/upload-artifact@v4
         with:
           name: Sonic-Origins-Android16-Final
           path: SonicOrigins_Final.apk
+          
