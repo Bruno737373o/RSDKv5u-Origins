@@ -1,4 +1,4 @@
-name: Build Origins + Extra Slot Amy (Android 16 Ultra Fix)
+name: Build Origins + Extra Slot Amy (Final Attempt)
 
 on: workflow_dispatch
 
@@ -25,41 +25,39 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Fix Manifest and Apply Mod
+      - name: Apply Mod and Fix Version
         run: |
-          # 1. Remove conflitos de pastas
+          # Remove conflitos e prepara pastas
           rm -rf engine/Game
           mkdir -p engine/Game/Objects
           
-          # 2. Copia arquivos do mod
+          # Copia apenas os arquivos essenciais do mod
           find mod_amy -name "*.c" -exec cp -v {} engine/Game/Objects/ \;
           find mod_amy -name "*.h" -exec cp -v {} engine/Game/Objects/ \;
 
-          # 3. Força o Target SDK para o Android 15/16 (API 35)
-          # Isso evita o erro de "Pacote Inválido" por versão obsoleta
+          # Ajusta o Gradle para o Android 16 (API 35)
           sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 35/g' engine/android/app/build.gradle || true
           sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 35/g' engine/android/app/build.gradle || true
 
-      - name: Build APK
+      - name: Build APK with Logs
         run: |
           cd engine/android
           chmod +x gradlew
-          ./gradlew assembleDebug -Pandroid.injected.build.abi="arm64-v8a"
+          # O --info ajudará a ver o erro real se falhar de novo
+          ./gradlew assembleDebug -Pandroid.injected.build.abi="arm64-v8a" --info
 
       - name: Prepare and Sign APK
+        if: success() # Só roda se o build passar
         run: |
           RAW_APK=$(find engine -name "*.apk" | grep -v "unaligned" | head -n 1)
-          
-          # Alinhamento
           /usr/local/lib/android/sdk/build-tools/34.0.0/zipalign -v 4 "$RAW_APK" SonicOrigins_Aligned.apk
           
-          # Chave de assinatura
           keytool -genkey -v -keystore dev-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias dev-alias -storepass password -keypass password -dname "CN=Android, OU=Dev, O=Game, L=World, ST=World, C=US"
           
-          # Assinatura com esquema completo (V1, V2, V3 e V4)
           /usr/local/lib/android/sdk/build-tools/34.0.0/apksigner sign --ks dev-key.jks --ks-key-alias dev-alias --ks-pass pass:password --key-pass pass:password --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out SonicOrigins_Final.apk SonicOrigins_Aligned.apk
 
       - name: Upload Final APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Sonic-Origins-Android16-Final
