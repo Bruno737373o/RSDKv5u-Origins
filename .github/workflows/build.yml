@@ -1,40 +1,98 @@
-name: Build RSDKv5u Android
+name: Build RSDKv5
 
 on: workflow_dispatch
 
 jobs:
-  # 1. Compilação do Núcleo para RetroArch (.so)
-  build-retroarch-core:
-    runs-on: ubuntu-latest
+  v5-windows:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
     steps:
       - name: Checkout 
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Setup Android NDK
-        uses: nttld/setup-ndk@v1
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
         with:
-          ndk-version: r25c
-
-      - name: Build Core (Arm64)
+          msystem: MINGW32
+          update: true
+          install: pkg-config make git mingw-w64-i686-gcc mingw-w64-i686-libogg mingw-w64-i686-libtheora
+      - name: Build RSDKv5 + U
         run: |
-          mkdir build_core && cd build_core
-          cmake .. -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
-          -DANDROID_ABI=arm64-v8a \
-          -DANDROID_PLATFORM=android-21 \
-          -DRETRO_CORE=ON \
-          -DRSDK_REVISION=3
-          make -j$(nproc)
-
-      - name: Upload Core
+          make -j8 RSDK_ONLY=1 AUTOBUILD=1
+          make -j8 clean-rsdk
+          make -j8 RSDK_ONLY=1 RSDK_REVISION=3 AUTOBUILD=1
+      - name: Move artifacts
+        run: |
+          mkdir artifacts
+          mv ./bin/Windows/DX9/*.exe ./artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rsdk_v5u_libretro_android
-          path: build_core/*.so
+          name: v5-windows
+          path: artifacts
 
-  # 2. Compilação do Aplicativo Android (.apk)
-  build-android-app:
+  v5-windows-x64:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Checkout 
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: pkg-config make git mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2 mingw-w64-x86_64-libogg mingw-w64-x86_64-libtheora
+      - name: Build RSDKv5 + U
+        run: |
+          make -j8 RSDK_ONLY=1 AUTOBUILD=1
+          make -j8 clean-rsdk
+          make -j8 RSDK_ONLY=1 RSDK_REVISION=3 AUTOBUILD=1
+      - name: Move artifacts
+        run: |
+          mkdir artifacts
+          mv ./bin/Windows/DX9/*.exe ./artifacts
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: v5-windows-x64
+          path: artifacts
+
+  v5-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install libogg-dev libsdl2-dev libtheora-dev libglew-dev libglfw3-dev
+      - name: Build RSDKv5 + U OGL
+        run: |
+          make -j8 RSDK_ONLY=1 AUTOBUILD=1
+          make -j8 clean-rsdk
+          make -j8 RSDK_ONLY=1 RSDK_REVISION=3 AUTOBUILD=1
+      - name: Build RSDKv5 + U SDL2
+        run: |
+          make -j8 RSDK_ONLY=1 SUBSYSTEM=SDL2 AUTOBUILD=1
+          make -j8 clean-rsdk
+          make -j8 RSDK_ONLY=1 SUBSYSTEM=SDL2 RSDK_REVISION=3 AUTOBUILD=1
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: v5-linux
+          path: bin/Linux
+
+  v5-android:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout 
@@ -42,7 +100,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: set up JDK 17
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
@@ -51,14 +109,17 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Build APK (Release)
-        run: |
-          # O repositório geralmente possui uma pasta 'android' com o projeto Gradle
-          chmod +x ./android/gradlew
-          cd android && ./gradlew assembleRelease
+      - name: Install NDK
+        run: sdkmanager "ndk;25.2.9519653"
 
+      - name: Build Android APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew clean assembleRelease -Pandroid.injected.build.abi="armeabi-v7a,arm64-v8a"
+        
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: rsdk_v5u_android_apk
+          name: v5-android-apk
           path: android/app/build/outputs/apk/release/*.apk
