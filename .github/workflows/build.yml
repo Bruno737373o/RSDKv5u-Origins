@@ -1,4 +1,4 @@
-name: Build RSDKv5 Origins Stable
+name: Build RSDKv5 Origins Stable v18.2
 
 on:
   workflow_dispatch:
@@ -18,15 +18,20 @@ jobs:
           distribution: "zulu"
           java-version: 17
 
-      - name: Download SDL2
+      - name: Download and Setup SDL2
         run: |
-          # O RSDKv5 Android depende do SDL2 na pasta jni
+          # Download SDL2
           Invoke-WebRequest -Uri "https://libsdl.org/release/SDL2-2.28.3.zip" -OutFile "SDL2.zip"
           Expand-Archive -Path SDL2.zip -DestinationPath ./android/app/jni/
-          if (Test-Path "android/app/jni/SDL2-2.28.3") {
-              Move-Item -Path "android/app/jni/SDL2-2.28.3" -Destination "android/app/jni/SDL"
-    
-      - name: Stable Manifest & Storage Fix
+          
+          # Renomeia a pasta de forma segura
+          $oldPath = "android/app/jni/SDL2-2.28.3"
+          $newPath = "android/app/jni/SDL"
+          if (Test-Path $oldPath) {
+              Move-Item -Path $oldPath -Destination $newPath
+          }
+
+      - name: Create Stable Manifest
         run: |
           $manifestPath = "android/app/src/main/AndroidManifest.xml"
           $newManifest = @"
@@ -59,22 +64,16 @@ jobs:
         working-directory: ./android
         run: |
           ./gradlew.bat clean
-          ./gradlew.bat assembleDebug --no-daemon -PABIFILTERS="arm64-v8a"
-
+          # Compila para ambas as arquiteturas para garantir que abra em qualquer celular
+          ./gradlew.bat assembleDebug --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a"
 
       - name: Sign and Align APK
         shell: pwsh
         run: |
           $rawApk = Get-ChildItem -Path android\app\build\outputs\apk\debug\*.apk | Select-Object -First 1
           $buildTools = "${env:ANDROID_HOME}\build-tools\34.0.0"
-          
-          # Alinhamento
           & "$buildTools\zipalign.exe" -v 4 $rawApk.FullName Sonic_Aligned.apk
-          
-          # Assinatura (Gera uma chave nova para cada build para garantir validade)
           keytool -genkey -v -keystore dev.jks -keyalg RSA -keysize 2048 -validity 10000 -alias dev -storepass password -keypass password -dname "CN=Android, O=Dev, C=US"
-          
-          # Assina com esquemas V2 e V3 (Indispensável para Android 16)
           & "$buildTools\apksigner.bat" sign --ks dev.jks --ks-key-alias dev --ks-pass pass:password --key-pass pass:password --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out Sonic_Origins_Stable.apk Sonic_Aligned.apk
 
       - name: Upload Artifact
