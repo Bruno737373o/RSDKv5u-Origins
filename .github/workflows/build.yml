@@ -28,42 +28,51 @@ jobs:
           }
       - name: Stable Manifest & Storage Fix
         run: |
-          $manifest = "android/app/src/main/AndroidManifest.xml"
-          if (Test-Path $manifest) {
-              $content = Get-Content $manifest
-              
-              # 1. Limpeza: Remove atributos duplicados que causam o erro de build
-              # Remove qualquer exported="true" ou exported="false" existente para evitar duplicata
-              $content = $content -replace 'android:exported="true"', ''
-              $content = $content -replace 'android:exported="false"', ''
-              
-              # 2. Adiciona as permissões de armazenamento de forma limpa
-              $perms = '    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />`n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />`n    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />'
-              if ($content -notmatch "MANAGE_EXTERNAL_STORAGE") {
-                  $content = $content -replace '<application', "$perms`n    <application"
-              }
-              
-              # 3. Adiciona os atributos necessários para o Android 16
-              # Adiciona exported="true" em todas as tags <activity
-              $content = $content -replace '<activity', '<activity android:exported="true"'
-              
-              # Força suporte a armazenamento legado e extração de bibliotecas nativas
-              $content = $content -replace '<application', '<application android:requestLegacyExternalStorage="true" android:extractNativeLibs="true" tools:replace="android:allowBackup"'
-              
-              # Garante que o namespace 'tools' esteja presente no topo do arquivo
-              if ($content -notmatch "http://schemas.android.com/tools") {
-                  $content = $content -replace '<manifest', '<manifest xmlns:tools="http://schemas.android.com/tools"'
-              }
+          $manifestPath = "android/app/src/main/AndroidManifest.xml"
+          
+          # Criamos um Manifesto NOVO e LIMPO para evitar duplicatas e erros de XML
+          $newManifest = @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:tools="http://schemas.android.com/tools"
+              package="org.retrosdk.rsdkv5">
 
-              $content | Set-Content $manifest
-          }
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+              <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
+
+              <application
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="Sonic Origins"
+                  android:requestLegacyExternalStorage="true"
+                  android:extractNativeLibs="true"
+                  android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+                  tools:replace="android:allowBackup">
+                  
+                  <activity
+                      android:name="org.libsdl.app.SDLActivity"
+                      android:configChanges="orientation|screenSize|keyboardHidden"
+                      android:exported="true"
+                      android:screenOrientation="sensorLandscape">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          "@
+
+          # Salva o novo manifesto por cima do antigo
+          Set-Content -Path $manifestPath -Value $newManifest -Encoding UTF8
 
       - name: Build Android APK
         working-directory: ./android
         run: |
-          # Clean é fundamental agora para limpar o manifesto corrompido anterior
           ./gradlew.bat clean
           ./gradlew.bat assembleDebug --no-daemon -PABIFILTERS="arm64-v8a"
+
 
       - name: Sign and Align APK
         shell: pwsh
