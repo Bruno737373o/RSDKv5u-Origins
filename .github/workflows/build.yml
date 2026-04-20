@@ -75,17 +75,33 @@ jobs:
 
       - name: Sign and Align APK
         run: |
-          # Busca o APK gerado
+          # 1. Encontrar o APK bruto
           RAW_APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
-          
-          # Alinha o APK (Essencial para Android 16)
-          zipalign -v 4 "$RAW_APK" Sonic_Aligned.apk
-          
-          # Gera chave de assinatura temporária
+          if [ -z "$RAW_APK" ]; then
+            echo "ERRO: APK não encontrado!"
+            exit 1
+          fi
+
+          # 2. Localizar as ferramentas do Android SDK (zipalign e apksigner)
+          # Buscamos a versão mais recente disponível na pasta build-tools
+          BUILD_TOOLS_PATH=$(ls -d ${ANDROID_HOME}/build-tools/* | tail -1)
+          echo "Usando Build Tools de: $BUILD_TOOLS_PATH"
+
+          # 3. Alinhamento (Zipalign)
+          ${BUILD_TOOLS_PATH}/zipalign -v 4 "$RAW_APK" Sonic_Aligned.apk
+
+          # 4. Gerar chave de assinatura
           keytool -genkey -v -keystore dev.jks -keyalg RSA -keysize 2048 -validity 10000 -alias dev -storepass password -keypass password -dname "CN=Android, O=Dev, C=US"
-          
-          # Assina com esquemas V2 e V3
-          apksigner sign --ks dev.jks --ks-key-alias dev --ks-pass pass:password --key-pass pass:password --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out Sonic_Origins_v5U.apk Sonic_Aligned.apk
+
+          # 5. Assinar o APK (Apksigner)
+          # No Android 16, a assinatura V2 e V3 é obrigatória
+          ${BUILD_TOOLS_PATH}/apksigner sign --ks dev.jks --ks-key-alias dev --ks-pass pass:password --key-pass pass:password --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out Sonic_Origins_v5U.apk Sonic_Aligned.apk
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sonic-Origins-v5U-Stable
+          path: Sonic_Origins_v5U.apk
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
