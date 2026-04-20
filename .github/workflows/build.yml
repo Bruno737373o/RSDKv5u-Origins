@@ -25,31 +25,21 @@ jobs:
           Expand-Archive -Path SDL2.zip -DestinationPath ./android/app/jni/
           if (Test-Path "android/app/jni/SDL2-2.28.3") {
               Move-Item -Path "android/app/jni/SDL2-2.28.3" -Destination "android/app/jni/SDL"
-          }
+    
       - name: Stable Manifest & Storage Fix
         run: |
           $manifestPath = "android/app/src/main/AndroidManifest.xml"
-          
-          # Criamos um Manifesto NOVO e LIMPO para evitar duplicatas e erros de XML
           $newManifest = @"
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-              xmlns:tools="http://schemas.android.com/tools"
               package="org.retrosdk.rsdkv5">
-
               <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
               <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-              <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
-
+              <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
               <application
-                  android:allowBackup="true"
-                  android:icon="@mipmap/ic_launcher"
                   android:label="Sonic Origins"
                   android:requestLegacyExternalStorage="true"
-                  android:extractNativeLibs="true"
-                  android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
-                  tools:replace="android:allowBackup">
-                  
+                  android:extractNativeLibs="true">
                   <activity
                       android:name="org.libsdl.app.SDLActivity"
                       android:configChanges="orientation|screenSize|keyboardHidden"
@@ -63,8 +53,6 @@ jobs:
               </application>
           </manifest>
           "@
-
-          # Salva o novo manifesto por cima do antigo
           Set-Content -Path $manifestPath -Value $newManifest -Encoding UTF8
 
       - name: Build Android APK
