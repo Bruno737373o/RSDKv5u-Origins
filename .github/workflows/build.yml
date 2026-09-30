@@ -108,11 +108,19 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
       - name: Checkout GameAPI
         uses: actions/checkout@v4
         with:
           repository: "RSDKModding/RSDKv5-GameAPI"
           path: "RSDKv5-GameAPI"
+
+      - name: Checkout Sonic Origins Decompilation
+        uses: actions/checkout@v4
+        with:
+          repository: "RSDKModding/Sonic-Origins-Decompilation"
+          path: "Sonic-Origins-Decompilation"
+
       - name: Setup RSDKv5 dependencies
         working-directory: ./dependencies/android
         run: |
@@ -122,29 +130,43 @@ jobs:
           rm *.zip
           rsync -ar libogg-*/* libogg
           mv libtheora-* libtheora
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
           accept-android-sdk-licenses: true
           packages: 'platform-tools'
+
       - name: Accept All SDK Licenses (Fallback)
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
       - name: Build Origins+RSDKv5 Android
         working-directory: ./android
         run: |
           mkdir -p ../artifacts
           chmod +x gradlew
+          
+          # Compilar RSDKv5U (Engine + libGame.so integrados)
           ./gradlew assembleDebug --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=3
           mv app/build/outputs/apk/debug/*.apk ../artifacts/rsdkv5u_android.apk
+          
           rm -rf app/build app/.cxx .gradle
+          
+          # Compilar RSDKv5 (Engine + libGame.so integrados)
           ./gradlew assembleDebug --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=2
           mv app/build/outputs/apk/debug/*.apk ../artifacts/rsdkv5_android.apk
+
+      - name: Cleanup Symlinks
+        run: |
+          rm -rf Sonic-Origins-Decompilation/dependencies/RSDKv5 || true
+
       - name: Upload artifact Android
         uses: actions/upload-artifact@v4
         with:
