@@ -17,7 +17,6 @@ env:
   GENERAL_FLAGS: "-DRETRO_DISABLE_PLUS=ON -DCMAKE_BUILD_TYPE=Release"
   V5_FLAGS: "-DRETRO_REVISION=2"
   V5U_FLAGS: "-DRETRO_REVISION=3"
-  # Normally you would use $VCPKG_INSTALLATION_PATH, but it's broken...so hardcode C:/vcpkg
   GENERAL_WIN_FLAGS: "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
   WIN32_FLAGS: "-DVCPKG_TARGET_TRIPLET=x86-windows-static -A Win32"
   WIN64_FLAGS: "-DVCPKG_TARGET_TRIPLET=x64-windows-static"
@@ -91,8 +90,6 @@ jobs:
           cmake --build build_v5 --parallel
           cmake -B build_v5U ${{env.GENERAL_FLAGS}} ${{env.GENERAL_LINUX_FLAGS}} ${{env.V5U_FLAGS}}
           cmake --build build_v5U --parallel
-      # tar the executables so that they don't lose exec permissions
-      # see: https://github.com/actions/upload-artifact?tab=readme-ov-file#permission-loss
       - name: Move artifacts
         run: |
           mkdir artifacts
@@ -116,11 +113,6 @@ jobs:
         with:
           repository: "RSDKModding/Sonic-Mania-Decompilation"
           path: "Sonic-Mania-Decompilation"
-      - name: Checkout Example-Mods
-        uses: actions/checkout@v4
-        with:
-          repository: "RSDKModding/RSDKv5-Example-Mods"
-          path: "RSDKv5-Example-Mods"
       - name: Checkout GameAPI
         uses: actions/checkout@v4
         with:
@@ -151,14 +143,12 @@ jobs:
       - name: Build Origins+RSDKv5 Android
         working-directory: ./android
         run: |
+          mkdir -p ../artifacts
           ./gradlew assemble --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=3
-          mv app/build/outputs/apk/release/*.apk rsdkv5u_mania.apk
+          mv app/build/outputs/apk/release/*.apk ../artifacts/rsdkv5u_android.apk
           ./gradlew clean
           ./gradlew assemble --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=2
-          mv app/build/outputs/apk/release/*.apk rsdkv5_mania.apk
-      # HACK: Remove RSDKv5 symlink in Mania to prevent warning in post checkout cleanup
-      - name: Cleanup
-        run: rm $PWD/Sonic-Origins-Decompilation/dependencies/RSDKv5
+          mv app/build/outputs/apk/release/*.apk ../artifacts/rsdkv5_android.apk
       - name: Upload artifact Android
         uses: actions/upload-artifact@v4
         with:
