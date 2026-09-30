@@ -157,13 +157,14 @@ jobs:
 
           template <size_t N>
           inline int strcpy_s(char (&dest)[N], const char* src) {
+              if (!src) return -1;
               strncpy(dest, src, N - 1);
               dest[N - 1] = '\0';
               return 0;
           }
 
           inline int strcpy_s(char* dest, size_t size, const char* src) {
-              if (!dest || size == 0) return -1;
+              if (!dest || !src || size == 0) return -1;
               strncpy(dest, src, size - 1);
               dest[size - 1] = '\0';
               return 0;
@@ -210,18 +211,19 @@ jobs:
           #endif // WIN_COMPAT_H
           """
 
-          paths_to_save = [
-              "win_compat.h",
-              "RSDKv5/win_compat.h",
-              "RSDKv5/RSDK/win_compat.h",
-              "RSDKv5/RSDK/Core/win_compat.h"
-          ]
-          for path in paths_to_save:
-              os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
-              with open(path, 'w', encoding='utf-8') as f:
-                  f.write(win_compat_code)
+          # Escreve win_compat.h em todos os subdiretórios que contêm código
+          for root, dirs, files_list in os.walk("."):
+              if root.startswith("./android") or root.startswith("android"):
+                  continue
+              has_code = any(f.endswith(('.h', '.hpp', '.cpp', '.c')) for f in files_list)
+              if has_code:
+                  compat_path = os.path.join(root, "win_compat.h")
+                  with open(compat_path, 'w', encoding='utf-8') as f:
+                      f.write(win_compat_code)
 
-          for root, dirs, files_list in os.walk("RSDKv5"):
+          for root, dirs, files_list in os.walk("."):
+              if root.startswith("./android") or root.startswith("android"):
+                  continue
               for file in files_list:
                   if file.endswith(('.h', '.hpp', '.cpp', '.c')):
                       filepath = os.path.join(root, file)
@@ -232,9 +234,11 @@ jobs:
                           with open(filepath, 'w', encoding='utf-8') as f:
                               f.write(content)
 
-          for root, dirs, files_list in os.walk("RSDKv5"):
+          for root, dirs, files_list in os.walk("."):
+              if root.startswith("./android") or root.startswith("android"):
+                  continue
               for file in files_list:
-                  if file.endswith(('.h', '.hpp', '.cpp')) and file != 'win_compat.h':
+                  if file.endswith(('.h', '.hpp', '.cpp', '.c')) and file != 'win_compat.h':
                       filepath = os.path.join(root, file)
                       with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                           content = f.read()
@@ -268,7 +272,9 @@ jobs:
                   f.write(s_content)
 
           win_headers = ['<Shlwapi.h>', '<shlwapi.h>', '<windows.h>', '"detours.h"', '<detours.h>', '<psapi.h>', '<shellapi.h>']
-          for root, dirs, files_list in os.walk("RSDKv5"):
+          for root, dirs, files_list in os.walk("."):
+              if root.startswith("./android") or root.startswith("android"):
+                  continue
               for file in files_list:
                   if file.endswith(('.h', '.hpp', '.cpp')):
                       filepath = os.path.join(root, file)
@@ -293,13 +299,19 @@ jobs:
                           with open(filepath, 'w', encoding='utf-8') as f:
                               f.write(content)
 
-      - name: Configurar estrutura JNI sem links simbólicos
+      - name: Configurar estrutura JNI sem loops recursivos
         run: |
           rm -rf $GITHUB_WORKSPACE/android/app/jni/RSDKv5
           mkdir -p $GITHUB_WORKSPACE/android/app/jni/RSDKv5
 
-          # Copia fisicamente todos os arquivos do projeto para JNI, descartando pastas de build e android para evitar recursão
-          rsync -av --exclude='android' --exclude='.git' --exclude='.gradle' $GITHUB_WORKSPACE/ $GITHUB_WORKSPACE/android/app/jni/RSDKv5/
+          # Copia o projeto para JNI ignorando EXCLUSIVAMENTE a pasta android da raiz (/android)
+          rsync -av \
+            --exclude='/android' \
+            --exclude='/.git' \
+            --exclude='/.gradle' \
+            --exclude='/.cxx' \
+            --exclude='/build' \
+            "$GITHUB_WORKSPACE/" "$GITHUB_WORKSPACE/android/app/jni/RSDKv5/"
 
           cd $GITHUB_WORKSPACE/android
           echo "sdk.dir=$ANDROID_HOME" > local.properties
