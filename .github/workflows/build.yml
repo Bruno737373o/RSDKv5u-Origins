@@ -144,6 +144,7 @@ jobs:
         working-directory: ./android
         run: |
           mkdir -p ../artifacts
+          chmod +x gradlew
           ./gradlew assemble --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=3
           mv app/build/outputs/apk/release/*.apk ../artifacts/rsdkv5u_android.apk
           ./gradlew clean
