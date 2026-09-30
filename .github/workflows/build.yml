@@ -66,7 +66,7 @@ jobs:
         run: |
           import os
 
-          win_compat_code = """#ifndef WIN_COMPAT_H
+          win_compat_code = r"""#ifndef WIN_COMPAT_H
           #define WIN_COMPAT_H
 
           #ifndef _WIN32
@@ -288,15 +288,21 @@ jobs:
                           with open(filepath, 'w', encoding='utf-8') as f:
                               f.write(content)
 
-      - name: Configurar estrutura JNI e propriedades do Gradle
+      - name: Configurar estrutura JNI sem recursão de diretório
         run: |
           cd android/app/jni
           rm -rf RSDKv5
-          ln -sf $GITHUB_WORKSPACE RSDKv5
+          mkdir -p RSDKv5
+          ln -s $GITHUB_WORKSPACE/RSDKv5 RSDKv5/RSDKv5
+          ln -s $GITHUB_WORKSPACE/dependencies RSDKv5/dependencies
+          if [ -f "$GITHUB_WORKSPACE/CMakeLists.txt" ]; then
+            ln -s $GITHUB_WORKSPACE/CMakeLists.txt RSDKv5/CMakeLists.txt
+          fi
 
           cd $GITHUB_WORKSPACE/android
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "ndk.dir=$ANDROID_HOME/ndk/24.0.8215888" >> local.properties
+          echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> gradle.properties
 
       - name: Compilar APK com Gradle
         run: |
@@ -309,3 +315,4 @@ jobs:
         with:
           name: RSDKv5u-Origins-Debug-APK
           path: android/app/build/outputs/apk/**/*.apk
+          
