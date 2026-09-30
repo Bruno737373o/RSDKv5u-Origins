@@ -164,7 +164,7 @@ jobs:
 
           inline int strcpy_s(char* dest, size_t size, const char* src) {
               if (!dest || size == 0) return -1;
-              strncpy(dest, size, screen - 1);
+              strncpy(dest, src, size - 1);
               dest[size - 1] = '\0';
               return 0;
           }
@@ -210,9 +210,14 @@ jobs:
           #endif // WIN_COMPAT_H
           """
 
-          paths_to_save = ["RSDKv5/win_compat.h", "RSDKv5/RSDKv5/win_compat.h"]
+          paths_to_save = [
+              "win_compat.h",
+              "RSDKv5/win_compat.h",
+              "RSDKv5/RSDK/win_compat.h",
+              "RSDKv5/RSDK/Core/win_compat.h"
+          ]
           for path in paths_to_save:
-              os.makedirs(os.path.dirname(path), exist_ok=True)
+              os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
               with open(path, 'w', encoding='utf-8') as f:
                   f.write(win_compat_code)
 
@@ -288,19 +293,13 @@ jobs:
                           with open(filepath, 'w', encoding='utf-8') as f:
                               f.write(content)
 
-      - name: Configurar estrutura JNI
+      - name: Configurar estrutura JNI sem links simbólicos
         run: |
-          cd $GITHUB_WORKSPACE/android/app/jni
-          rm -rf RSDKv5
-          mkdir -p RSDKv5
+          rm -rf $GITHUB_WORKSPACE/android/app/jni/RSDKv5
+          mkdir -p $GITHUB_WORKSPACE/android/app/jni/RSDKv5
 
-          # Mapeia todos os arquivos/pastas da raiz para dentro de RSDKv5, exceto a pasta 'android'
-          for item in $GITHUB_WORKSPACE/*; do
-            base=$(basename "$item")
-            if [ "$base" != "android" ]; then
-              ln -s "$item" "RSDKv5/$base"
-            fi
-          done
+          # Copia fisicamente todos os arquivos do projeto para JNI, descartando pastas de build e android para evitar recursão
+          rsync -av --exclude='android' --exclude='.git' --exclude='.gradle' $GITHUB_WORKSPACE/ $GITHUB_WORKSPACE/android/app/jni/RSDKv5/
 
           cd $GITHUB_WORKSPACE/android
           echo "sdk.dir=$ANDROID_HOME" > local.properties
@@ -318,4 +317,3 @@ jobs:
         with:
           name: RSDKv5u-Origins-Debug-APK
           path: android/app/build/outputs/apk/**/*.apk
-          
