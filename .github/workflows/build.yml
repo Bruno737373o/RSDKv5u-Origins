@@ -164,7 +164,7 @@ jobs:
 
           inline int strcpy_s(char* dest, size_t size, const char* src) {
               if (!dest || size == 0) return -1;
-              strncpy(dest, src, size - 1);
+              strncpy(dest, size, screen - 1);
               dest[size - 1] = '\0';
               return 0;
           }
@@ -288,16 +288,19 @@ jobs:
                           with open(filepath, 'w', encoding='utf-8') as f:
                               f.write(content)
 
-      - name: Configurar estrutura JNI sem recursão de diretório
+      - name: Configurar estrutura JNI
         run: |
-          cd android/app/jni
+          cd $GITHUB_WORKSPACE/android/app/jni
           rm -rf RSDKv5
           mkdir -p RSDKv5
-          ln -s $GITHUB_WORKSPACE/RSDKv5 RSDKv5/RSDKv5
-          ln -s $GITHUB_WORKSPACE/dependencies RSDKv5/dependencies
-          if [ -f "$GITHUB_WORKSPACE/CMakeLists.txt" ]; then
-            ln -s $GITHUB_WORKSPACE/CMakeLists.txt RSDKv5/CMakeLists.txt
-          fi
+
+          # Mapeia todos os arquivos/pastas da raiz para dentro de RSDKv5, exceto a pasta 'android'
+          for item in $GITHUB_WORKSPACE/*; do
+            base=$(basename "$item")
+            if [ "$base" != "android" ]; then
+              ln -s "$item" "RSDKv5/$base"
+            fi
+          done
 
           cd $GITHUB_WORKSPACE/android
           echo "sdk.dir=$ANDROID_HOME" > local.properties
