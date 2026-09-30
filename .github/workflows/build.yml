@@ -109,17 +109,17 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Checkout Sonic Origins Decompilation
+        uses: actions/checkout@v4
+        with:
+          repository: "thesupersonic16/RSDKv5u-Origins"
+          path: "Sonic-Origins-Decompilation"
+
       - name: Checkout GameAPI
         uses: actions/checkout@v4
         with:
           repository: "RSDKModding/RSDKv5-GameAPI"
           path: "RSDKv5-GameAPI"
-
-      - name: Checkout Sonic Origins Decompilation
-        uses: actions/checkout@v4
-        with:
-          repository: "RSDKModding/Sonic-Origins-Decompilation"
-          path: "Sonic-Origins-Decompilation"
 
       - name: Setup RSDKv5 dependencies
         working-directory: ./dependencies/android
@@ -153,19 +153,18 @@ jobs:
           mkdir -p ../artifacts
           chmod +x gradlew
           
-          # Compilar RSDKv5U (Engine + libGame.so integrados)
+          # Compilar RSDKv5U (Engine + libGame.so)
           ./gradlew assembleDebug --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=3
           mv app/build/outputs/apk/debug/*.apk ../artifacts/rsdkv5u_android.apk
           
           rm -rf app/build app/.cxx .gradle
           
-          # Compilar RSDKv5 (Engine + libGame.so integrados)
+          # Compilar RSDKv5 (Engine + libGame.so)
           ./gradlew assembleDebug --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=2
           mv app/build/outputs/apk/debug/*.apk ../artifacts/rsdkv5_android.apk
 
       - name: Cleanup Symlinks
-        run: |
-          rm -rf Sonic-Origins-Decompilation/dependencies/RSDKv5 || true
+        run: rm -f $PWD/Sonic-Origins-Decompilation/dependencies/RSDKv5 || true
 
       - name: Upload artifact Android
         uses: actions/upload-artifact@v4
