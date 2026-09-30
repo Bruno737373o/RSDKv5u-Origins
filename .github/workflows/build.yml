@@ -1,331 +1,167 @@
-name: Build Android APK
+name: Build RSDKv5 + U
 
 on:
   push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
-  workflow_dispatch:
+    paths:
+      - android/**
+      - dependencies/**
+      - RSDKv5/**
+      - RSDKv5U/**
+      - platforms/**
+      - .github/workflows/build.yml
+      - CMakeLists.txt
+    branches:
+      - master
+
+env:
+  GENERAL_FLAGS: "-DRETRO_DISABLE_PLUS=ON -DCMAKE_BUILD_TYPE=Release"
+  V5_FLAGS: "-DRETRO_REVISION=2"
+  V5U_FLAGS: "-DRETRO_REVISION=3"
+  # Normally you would use $VCPKG_INSTALLATION_PATH, but it's broken...so hardcode C:/vcpkg
+  GENERAL_WIN_FLAGS: "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+  WIN32_FLAGS: "-DVCPKG_TARGET_TRIPLET=x86-windows-static -A Win32"
+  WIN64_FLAGS: "-DVCPKG_TARGET_TRIPLET=x64-windows-static"
+  GENERAL_LINUX_FLAGS: ""
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-
+  v5-windows:
+    runs-on: windows-latest
     steps:
-      - name: Checkout repositório
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Configurar Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Configurar Android NDK e SDK
+      - name: Install dependencies
+        run: vcpkg install libtheora libogg --triplet=x86-windows-static
+      - name: Build RSDKv5 + U
         run: |
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;24.0.8215888" "build-tools;33.0.2" "platforms;android-33" "platform-tools"
-
-      - name: Extrair e configurar bibliotecas nativas (libogg e libtheora)
+          cmake -B build_v5 ${{env.GENERAL_FLAGS}} ${{env.GENERAL_WIN_FLAGS}} ${{env.WIN32_FLAGS}} ${{env.V5_FLAGS}}
+          cmake --build build_v5 --parallel --config Release
+          cmake -B build_v5U ${{env.GENERAL_FLAGS}} ${{env.GENERAL_WIN_FLAGS}} ${{env.WIN32_FLAGS}} ${{env.V5U_FLAGS}}
+          cmake --build build_v5U --parallel --config Release
+      - name: Move artifacts
         run: |
-          mkdir -p dependencies/android
-          cd dependencies/android
-          rm -rf libogg libtheora libogg-1.3.5 libtheora-1.1.1 libogg.tar.gz libtheora.tar.gz
-
-          wget -q https://downloads.xiph.org/releases/ogg/libogg-1.3.5.tar.gz -O libogg.tar.gz
-          mkdir -p libogg
-          tar -xzf libogg.tar.gz -C libogg --strip-components=1
-          rm libogg.tar.gz
-
-          wget -q https://downloads.xiph.org/releases/theora/libtheora-1.1.1.tar.gz -O libtheora.tar.gz
-          mkdir -p libtheora
-          tar -xzf libtheora.tar.gz -C libtheora --strip-components=1
-          rm libtheora.tar.gz
-
-          mkdir -p libogg/include/ogg
-          cat << 'EOF' > libogg/include/ogg/config_types.h
-          #ifndef __CONFIG_TYPES_H__
-          #define __CONFIG_TYPES_H__
-
-          #include <stdint.h>
-
-          typedef int16_t ogg_int16_t;
-          typedef uint16_t ogg_uint16_t;
-          typedef int32_t ogg_int32_t;
-          typedef uint32_t ogg_uint32_t;
-          typedef int64_t ogg_int64_t;
-          typedef uint64_t ogg_uint64_t;
-
-          #endif
-          EOF
-
-      - name: Aplicar patches de compatibilidade Windows no código C++
-        shell: python
-        run: |
-          import os
-
-          win_compat_code = r"""#ifndef WIN_COMPAT_H
-          #define WIN_COMPAT_H
-
-          #ifndef _WIN32
-          #include <stdint.h>
-          #include <stdlib.h>
-          #include <stdio.h>
-          #include <string.h>
-          #include <sys/stat.h>
-          #include <unistd.h>
-          #include <dlfcn.h>
-          #include <string>
-
-          #define __int8 char
-          #define __int16 short
-          #define __int32 int
-          #define __int64 long long
-
-          typedef uint32_t DWORD;
-          typedef uint16_t WORD;
-          typedef uint8_t BYTE;
-          typedef void* HMODULE;
-          typedef void* HANDLE;
-          typedef void* HWND;
-          typedef int HRESULT;
-          typedef unsigned int UINT;
-          typedef wchar_t WCHAR;
-          typedef DWORD* PDWORD;
-
-          #ifndef E_FAIL
-          #define E_FAIL (-1)
-          #endif
-          #ifndef S_OK
-          #define S_OK 0
-          #endif
-          #ifndef TEXT
-          #define TEXT(quote) quote
-          #endif
-
-          #ifndef INVALID_FILE_ATTRIBUTES
-          #define INVALID_FILE_ATTRIBUTES ((DWORD)-1)
-          #endif
-          #ifndef FILE_ATTRIBUTE_DIRECTORY
-          #define FILE_ATTRIBUTE_DIRECTORY 0x10
-          #endif
-          #ifndef CP_UTF8
-          #define CP_UTF8 65001
-          #endif
-          #ifndef _countof
-          #define _countof(x) (sizeof(x)/sizeof((x)[0]))
-          #endif
-
-          #ifndef PAGE_EXECUTE_READWRITE
-          #define PAGE_EXECUTE_READWRITE 0x40
-          #endif
-          #ifndef PAGE_READWRITE
-          #define PAGE_READWRITE 0x04
-          #endif
-
-          #ifndef __fastcall
-          #define __fastcall
-          #endif
-          #ifndef __cdecl
-          #define __cdecl
-          #endif
-          #ifndef __stdcall
-          #define __stdcall
-          #endif
-
-          #ifndef BASE_ADDRESS
-          #define BASE_ADDRESS 0
-          #endif
-          #ifndef MAX_PATH
-          #define MAX_PATH 260
-          #endif
-
-          #ifdef __cplusplus
-          #include <utility>
-
-          template <size_t N, typename... Args>
-          inline int sprintf_s(char (&buf)[N], const char* fmt, Args&&... args) {
-              return snprintf(buf, N, fmt, std::forward<Args>(args)...);
-          }
-
-          template <typename... Args>
-          inline int sprintf_s(char* buf, size_t size, const char* fmt, Args&&... args) {
-              return snprintf(buf, size, fmt, std::forward<Args>(args)...);
-          }
-
-          template <size_t N>
-          inline int strcpy_s(char (&dest)[N], const char* src) {
-              if (!src) return -1;
-              strncpy(dest, src, N - 1);
-              dest[N - 1] = '\0';
-              return 0;
-          }
-
-          inline int strcpy_s(char* dest, size_t size, const char* src) {
-              if (!dest || !src || size == 0) return -1;
-              strncpy(dest, src, size - 1);
-              dest[size - 1] = '\0';
-              return 0;
-          }
-          #else
-          #ifndef sprintf_s
-          #define sprintf_s(buf, ...) snprintf(buf, sizeof(buf), __VA_ARGS__)
-          #endif
-          #endif
-
-          inline HMODULE LoadLibraryA(const char* name) { (void)name; return NULL; }
-          inline HMODULE LoadLibrary(const char* name) { (void)name; return NULL; }
-          inline void* GetProcAddress(HMODULE h, const char* sym) { (void)h; (void)sym; return NULL; }
-          inline HMODULE GetModuleHandle(const char* name) { (void)name; return NULL; }
-          inline HWND GetConsoleWindow() { return NULL; }
-          inline int VirtualProtect(void* lpAddress, size_t dwSize, DWORD flNewProtect, DWORD* lpflOldProtect) {
-              (void)lpAddress; (void)dwSize; (void)flNewProtect; (void)lpflOldProtect;
-              return 1;
-          }
-
-          inline DWORD GetFileAttributesA(const char* path) {
-              struct stat st;
-              if (stat(path, &st) == 0) {
-                  if (S_ISDIR(st.st_mode)) return FILE_ATTRIBUTE_DIRECTORY;
-                  return 0;
-              }
-              return INVALID_FILE_ATTRIBUTES;
-          }
-
-          inline int MultiByteToWideChar(int a, int b, const char* c, int d, WCHAR* e, int f) {
-              (void)a; (void)b; (void)c; (void)d; (void)e; (void)f;
-              return 0;
-          }
-
-          inline void* DetourGetEntryPoint(HMODULE h) { (void)h; return NULL; }
-          inline int DetourTransactionBegin() { return 0; }
-          inline int DetourUpdateThread(HANDLE h) { (void)h; return 0; }
-          inline int DetourAttach(void** a, void* b) { (void)a; (void)b; return 0; }
-          inline int DetourDetach(void** a, void* b) { (void)a; (void)b; return 0; }
-          inline int DetourTransactionCommit() { return 0; }
-
-          #endif // !_WIN32
-
-          #endif // WIN_COMPAT_H
-          """
-
-          # Escreve win_compat.h em todos os subdiretórios que contêm código
-          for root, dirs, files_list in os.walk("."):
-              if root.startswith("./android") or root.startswith("android"):
-                  continue
-              has_code = any(f.endswith(('.h', '.hpp', '.cpp', '.c')) for f in files_list)
-              if has_code:
-                  compat_path = os.path.join(root, "win_compat.h")
-                  with open(compat_path, 'w', encoding='utf-8') as f:
-                      f.write(win_compat_code)
-
-          for root, dirs, files_list in os.walk("."):
-              if root.startswith("./android") or root.startswith("android"):
-                  continue
-              for file in files_list:
-                  if file.endswith(('.h', '.hpp', '.cpp', '.c')):
-                      filepath = os.path.join(root, file)
-                      with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                          content = f.read()
-                      if '#define sprintf_s' in content:
-                          content = content.replace('#define sprintf_s', '// #define sprintf_s')
-                          with open(filepath, 'w', encoding='utf-8') as f:
-                              f.write(content)
-
-          for root, dirs, files_list in os.walk("."):
-              if root.startswith("./android") or root.startswith("android"):
-                  continue
-              for file in files_list:
-                  if file.endswith(('.h', '.hpp', '.cpp', '.c')) and file != 'win_compat.h':
-                      filepath = os.path.join(root, file)
-                      with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                          content = f.read()
-                      if 'win_compat.h' not in content:
-                          content = '#include "win_compat.h"\n' + content
-                          with open(filepath, 'w', encoding='utf-8') as f:
-                              f.write(content)
-
-          detours_path = "RSDKv5/detours.h"
-          if os.path.exists(detours_path):
-              with open(detours_path, 'r', encoding='utf-8', errors='ignore') as f:
-                  d_content = f.read()
-              with open(detours_path, 'w', encoding='utf-8') as f:
-                  f.write("#ifdef _WIN32\n" + d_content + "\n#endif\n")
-
-          helpers_path = "RSDKv5/Helpers.h"
-          if os.path.exists(helpers_path):
-              with open(helpers_path, 'r', encoding='utf-8', errors='ignore') as f:
-                  h_content = f.read()
-              h_content = h_content.replace('#define BASE_ADDRESS', '#undef BASE_ADDRESS\n#define BASE_ADDRESS')
-              with open(helpers_path, 'w', encoding='utf-8') as f:
-                  f.write(h_content)
-
-          s3k_path = "RSDKv5/S3K.cpp"
-          if os.path.exists(s3k_path):
-              with open(s3k_path, 'r', encoding='utf-8', errors='ignore') as f:
-                  s_content = f.read()
-              if 'modPath' in s_content and 'const char *modPath' not in s_content and 'char *modPath' not in s_content:
-                  s_content = "#ifndef _WIN32\nstatic const char* modPath = \".\";\n#endif\n" + s_content
-              with open(s3k_path, 'w', encoding='utf-8') as f:
-                  f.write(s_content)
-
-          win_headers = ['<Shlwapi.h>', '<shlwapi.h>', '<windows.h>', '"detours.h"', '<detours.h>', '<psapi.h>', '<shellapi.h>']
-          for root, dirs, files_list in os.walk("."):
-              if root.startswith("./android") or root.startswith("android"):
-                  continue
-              for file in files_list:
-                  if file.endswith(('.h', '.hpp', '.cpp')):
-                      filepath = os.path.join(root, file)
-                      with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                          content = f.read()
-                      modified = False
-                      lines = content.split('\n')
-                      new_lines = []
-                      in_win32 = False
-                      for line in lines:
-                          if '#ifdef _WIN32' in line or '#if defined(_WIN32)' in line:
-                              in_win32 = True
-                          elif '#endif' in line:
-                              in_win32 = False
-                          has_win_header = any(h in line for h in win_headers)
-                          if has_win_header and not in_win32 and not line.strip().startswith('//'):
-                              line = f'#ifdef _WIN32\n{line}\n#endif'
-                              modified = True
-                          new_lines.append(line)
-                      content = '\n'.join(new_lines)
-                      if modified:
-                          with open(filepath, 'w', encoding='utf-8') as f:
-                              f.write(content)
-
-      - name: Configurar estrutura JNI sem loops recursivos
-        run: |
-          rm -rf $GITHUB_WORKSPACE/android/app/jni/RSDKv5
-          mkdir -p $GITHUB_WORKSPACE/android/app/jni/RSDKv5
-
-          # Copia o projeto para JNI ignorando EXCLUSIVAMENTE a pasta android da raiz (/android)
-          rsync -av \
-            --exclude='/android' \
-            --exclude='/.git' \
-            --exclude='/.gradle' \
-            --exclude='/.cxx' \
-            --exclude='/build' \
-            "$GITHUB_WORKSPACE/" "$GITHUB_WORKSPACE/android/app/jni/RSDKv5/"
-
-          cd $GITHUB_WORKSPACE/android
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "ndk.dir=$ANDROID_HOME/ndk/24.0.8215888" >> local.properties
-          echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m" >> gradle.properties
-
-      - name: Compilar APK com Gradle
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug
-
-      - name: Disponibilizar APK para download (Artifacts)
+          mkdir artifacts
+          mv ./build_*/Release/*.exe ./artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: RSDKv5u-Origins-Debug-APK
-          path: android/app/build/outputs/apk/**/*.apk
+          name: v5-windows
+          path: artifacts
+
+  v5-windows-x64:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: vcpkg install libtheora libogg --triplet=x64-windows-static
+      - name: Build RSDKv5 + U
+        run: |
+          cmake -B build_v5 ${{env.GENERAL_FLAGS}} ${{env.GENERAL_WIN_FLAGS}} ${{env.WIN64_FLAGS}} ${{env.V5_FLAGS}}
+          cmake --build build_v5 --parallel --config Release
+          cmake -B build_v5U ${{env.GENERAL_FLAGS}} ${{env.GENERAL_WIN_FLAGS}} ${{env.WIN64_FLAGS}} ${{env.V5U_FLAGS}}
+          cmake --build build_v5U --parallel --config Release
+      - name: Move artifacts
+        run: |
+          mkdir artifacts
+          mv ./build_*/Release/*.exe ./artifacts
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: v5-windows-x64
+          path: artifacts
+
+  v5-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install libogg-dev libtheora-dev libglew-dev libglfw3-dev
+      - name: Build RSDKv5 + U OGL
+        run: |
+          cmake -B build_v5 ${{env.GENERAL_FLAGS}} ${{env.GENERAL_LINUX_FLAGS}} ${{env.V5_FLAGS}}
+          cmake --build build_v5 --parallel
+          cmake -B build_v5U ${{env.GENERAL_FLAGS}} ${{env.GENERAL_LINUX_FLAGS}} ${{env.V5U_FLAGS}}
+          cmake --build build_v5U --parallel
+      # tar the executables so that they don't lose exec permissions
+      # see: https://github.com/actions/upload-artifact?tab=readme-ov-file#permission-loss
+      - name: Move artifacts
+        run: |
+          mkdir artifacts
+          mv ./build_*/RSDKv5* ./artifacts
+          tar -czvf linux.tar.gz -C ./artifacts .
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: v5-linux
+          path: linux.tar.gz
+
+  v5-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout RSDKv5
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Checkout Sonic Mania
+        uses: actions/checkout@v4
+        with:
+          repository: "RSDKModding/Sonic-Mania-Decompilation"
+          path: "Sonic-Mania-Decompilation"
+      - name: Checkout Example-Mods
+        uses: actions/checkout@v4
+        with:
+          repository: "RSDKModding/RSDKv5-Example-Mods"
+          path: "RSDKv5-Example-Mods"
+      - name: Checkout GameAPI
+        uses: actions/checkout@v4
+        with:
+          repository: "RSDKModding/RSDKv5-GameAPI"
+          path: "RSDKv5-GameAPI"
+      - name: Setup RSDKv5 dependencies
+        working-directory: ./dependencies/android
+        run: |
+          curl -L -O https://downloads.xiph.org/releases/ogg/libogg-1.3.5.zip
+          curl -L -O https://downloads.xiph.org/releases/theora/libtheora-1.1.1.zip
+          unzip \*.zip
+          rm *.zip
+          rsync -ar libogg-*/* libogg
+          mv libtheora-* libtheora
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+          packages: 'platform-tools'
+      - name: Accept All SDK Licenses (Fallback)
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      - name: Build Origins+RSDKv5 Android
+        working-directory: ./android
+        run: |
+          ./gradlew assemble --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=3
+          mv app/build/outputs/apk/release/*.apk rsdkv5u_mania.apk
+          ./gradlew clean
+          ./gradlew assemble --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=2
+          mv app/build/outputs/apk/release/*.apk rsdkv5_mania.apk
+      # HACK: Remove RSDKv5 symlink in Mania to prevent warning in post checkout cleanup
+      - name: Cleanup
+        run: rm $PWD/Sonic-Origins-Decompilation/dependencies/RSDKv5
+      - name: Upload artifact Android
+        uses: actions/upload-artifact@v4
+        with:
+          name: v5-android
+          path: artifacts
+          
