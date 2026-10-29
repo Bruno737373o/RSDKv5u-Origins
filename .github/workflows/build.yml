@@ -25,33 +25,30 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    # Instala o SDK, NDK e CMake ignorando o pacote obsoleto "tools"
+    # Baixa a versão exata do NDK exigida pelo build.gradle do projeto (24.0.8215888)
     - name: Setup Android SDK, NDK & CMake
       uses: android-actions/setup-android@v3
       with:
-        packages: 'cmdline-tools;latest ndk;25.2.9519653 cmake;3.22.1'
+        packages: 'cmdline-tools;latest ndk;24.0.8215888 cmake;3.22.1'
         
-    # Cria o local.properties na pasta correta do projeto (raiz/android)
+    # Aponta o local.properties para a versão correta do NDK
     - name: Configure local.properties
       run: |
         echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
-        echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> android/local.properties
+        echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/24.0.8215888" >> android/local.properties
 
-    # Acessa a pasta jni e cria os links simbólicos subindo 3 níveis
     - name: Create Engine Symlinks
       run: |
         cd android/app/jni
         ln -s ../../../RSDKv5 RSDKv5
         ln -s ../../../Game Game
 
-    # Inicia a compilação do APK
     - name: Build with Gradle
       run: |
         cd android
         chmod +x gradlew
         ./gradlew assembleDebug
 
-    # Salva o arquivo gerado
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
