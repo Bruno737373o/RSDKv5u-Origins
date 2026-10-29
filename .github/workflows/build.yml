@@ -25,32 +25,35 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    # CORREÇÃO AQUI: Removemos o passo separado do "sdkmanager" e passamos
-    # as dependências direto na action. O "cmdline-tools;latest" substitui o "tools".
+    # Instala o SDK, NDK e CMake ignorando o pacote obsoleto "tools"
     - name: Setup Android SDK, NDK & CMake
       uses: android-actions/setup-android@v3
       with:
         packages: 'cmdline-tools;latest ndk;25.2.9519653 cmake;3.22.1'
         
+    # Cria o local.properties na pasta correta do projeto (raiz/android)
     - name: Configure local.properties
       run: |
-        echo "sdk.dir=$ANDROID_SDK_ROOT" > dependencies/android/local.properties
-        echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> dependencies/android/local.properties
+        echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+        echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> android/local.properties
 
+    # Acessa a pasta jni e cria os links simbólicos subindo 3 níveis
     - name: Create Engine Symlinks
       run: |
-        cd dependencies/android/app/jni
-        ln -s ../../../../RSDKv5 RSDKv5
-        ln -s ../../../../Game Game
+        cd android/app/jni
+        ln -s ../../../RSDKv5 RSDKv5
+        ln -s ../../../Game Game
 
+    # Inicia a compilação do APK
     - name: Build with Gradle
       run: |
-        cd dependencies/android
+        cd android
         chmod +x gradlew
         ./gradlew assembleDebug
 
+    # Salva o arquivo gerado
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: rsdkv5u-android-debug-apk
-        path: dependencies/android/app/build/outputs/apk/debug/app-debug.apk
+        path: android/app/build/outputs/apk/debug/app-debug.apk
