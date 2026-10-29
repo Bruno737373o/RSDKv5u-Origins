@@ -1,174 +1,65 @@
-name: Build RSDKv5 + U
+name: Build Android APK
 
 on:
   push:
-    paths:
-      - android/**
-      - dependencies/**
-      - RSDKv5/**
-      - RSDKv5U/**
-      - platforms/**
-      - .github/workflows/build.yml
-      - CMakeLists.txt
-    branches:
-      - master
-
-env:
-  GENERAL_FLAGS: "-DRETRO_DISABLE_PLUS=ON -DCMAKE_BUILD_TYPE=Release"
-  V5_FLAGS: "-DRETRO_REVISION=2"
-  V5U_FLAGS: "-DRETRO_REVISION=3"
-  GENERAL_WIN_FLAGS: "-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
-  WIN32_FLAGS: "-DVCPKG_TARGET_TRIPLET=x86-windows-static -A Win32"
-  WIN64_FLAGS: "-DVCPKG_TARGET_TRIPLET=x64-windows-static"
-  GENERAL_LINUX_FLAGS: ""
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
 
 jobs:
-  v5-windows:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Install dependencies
-        run: vcpkg install libtheora libogg --triplet=x86-windows-static
-      - name: Build RSDKv5 + U
-        run: |
-          cmake -B build_v5 ${{env.GENERAL_FLAGS}} ${{env.GENERAL_WIN_FLAGS}} ${{env.WIN32_FLAGS}} ${{env.V5_FLAGS}}
-          cmake --build build_v5 --parallel --config Release
-          cmake -B build_v5U ${{env.GENERAL_FLAGS}} ${{env.GENERAL_WIN_FLAGS}} ${{env.WIN32_FLAGS}} ${{env.V5U_FLAGS}}
-          cmake --build build_v5U --parallel --config Release
-      - name: Move artifacts
-        run: |
-          mkdir artifacts
-          mv ./build_*/Release/*.exe ./artifacts
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: v5-windows
-          path: artifacts
-
-  v5-windows-x64:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Install dependencies
-        run: vcpkg install libtheora libogg --triplet=x64-windows-static
-      - name: Build RSDKv5 + U
-        run: |
-          cmake -B build_v5 ${{env.GENERAL_FLAGS}} ${{env.GENERAL_WIN_FLAGS}} ${{env.WIN64_FLAGS}} ${{env.V5_FLAGS}}
-          cmake --build build_v5 --parallel --config Release
-          cmake -B build_v5U ${{env.GENERAL_FLAGS}} ${{env.GENERAL_WIN_FLAGS}} ${{env.WIN64_FLAGS}} ${{env.V5U_FLAGS}}
-          cmake --build build_v5U --parallel --config Release
-      - name: Move artifacts
-        run: |
-          mkdir artifacts
-          mv ./build_*/Release/*.exe ./artifacts
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: v5-windows-x64
-          path: artifacts
-
-  v5-linux:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install libogg-dev libtheora-dev libglew-dev libglfw3-dev
-      - name: Build RSDKv5 + U OGL
-        run: |
-          cmake -B build_v5 ${{env.GENERAL_FLAGS}} ${{env.GENERAL_LINUX_FLAGS}} ${{env.V5_FLAGS}}
-          cmake --build build_v5 --parallel
-          cmake -B build_v5U ${{env.GENERAL_FLAGS}} ${{env.GENERAL_LINUX_FLAGS}} ${{env.V5U_FLAGS}}
-          cmake --build build_v5U --parallel
-      - name: Move artifacts
-        run: |
-          mkdir artifacts
-          mv ./build_*/RSDKv5* ./artifacts
-          tar -czvf linux.tar.gz -C ./artifacts .
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: v5-linux
-          path: linux.tar.gz
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 0
 
-  v5-android:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout RSDKv5
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
 
-      - name: Checkout Sonic Origins Decompilation
-        uses: actions/checkout@v4
-        with:
-          repository: "thesupersonic16/RSDKv5u-Origins"
-          path: "Sonic-Origins-Decompilation"
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
 
-      - name: Checkout GameAPI
-        uses: actions/checkout@v4
-        with:
-          repository: "RSDKModding/RSDKv5-GameAPI"
-          path: "RSDKv5-GameAPI"
+    - name: Install Android NDK & CMake
+      run: |
+        sdkmanager --install "ndk;25.2.9519653" "cmake;3.22.1"
+        
+    - name: Configure local.properties
+      run: |
+        echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+        echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> android/local.properties
 
-      - name: Setup RSDKv5 dependencies
-        working-directory: ./dependencies/android
-        run: |
-          curl -L -O https://downloads.xiph.org/releases/ogg/libogg-1.3.5.zip
-          curl -L -O https://downloads.xiph.org/releases/theora/libtheora-1.1.1.zip
-          unzip \*.zip
-          rm *.zip
-          rsync -ar libogg-*/* libogg
-          mv libtheora-* libtheora
+    # Baixa dependências de áudio (obrigatórias para o CMake compilar o RSDKv5 no Android)
+    - name: Download Audio Dependencies
+      run: |
+        mkdir -p dependencies/android
+        git clone https://github.com/xiph/ogg.git dependencies/android/libogg
+        git clone https://github.com/xiph/theora.git dependencies/android/libtheora
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+    - name: Create Engine Symlinks
+      run: |
+        cd android/app/jni
+        # No RSDKv5u-Origins, o jni está 3 níveis abaixo da raiz (app -> android -> raiz)
+        ln -s ../../../RSDKv5 RSDKv5
+        ln -s ../../../Game Game
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          accept-android-sdk-licenses: true
-          packages: 'platform-tools'
+    - name: Build with Gradle
+      run: |
+        cd android
+        chmod +x gradlew
+        ./gradlew assembleDebug
 
-      - name: Accept All SDK Licenses (Fallback)
-        run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
-      - name: Build Origins+RSDKv5 Android
-        working-directory: ./android
-        run: |
-          mkdir -p ../artifacts
-          chmod +x gradlew
-          
-          # Compilar RSDKv5U (Engine + libGame.so)
-          ./gradlew assembleDebug --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=3
-          mv app/build/outputs/apk/debug/*.apk ../artifacts/rsdkv5u_android.apk
-          
-          rm -rf app/build app/.cxx .gradle
-          
-          # Compilar RSDKv5 (Engine + libGame.so)
-          ./gradlew assembleDebug --no-daemon -PABIFILTERS="armeabi-v7a;arm64-v8a" -PRETRO_DISABLE_PLUS -PRETRO_REVISION=2
-          mv app/build/outputs/apk/debug/*.apk ../artifacts/rsdkv5_android.apk
-
-      - name: Cleanup Symlinks
-        run: rm -f $PWD/Sonic-Origins-Decompilation/dependencies/RSDKv5 || true
-
-      - name: Upload artifact Android
-        uses: actions/upload-artifact@v4
-        with:
-          name: v5-android
-          path: artifacts
-          
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rsdkv5u-android-debug-apk
+        path: android/app/build/outputs/apk/debug/app-debug.apk
+        
