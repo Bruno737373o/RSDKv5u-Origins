@@ -25,35 +25,27 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Setup Android SDK
+    # CORREÇÃO AQUI: Removemos o passo separado do "sdkmanager" e passamos
+    # as dependências direto na action. O "cmdline-tools;latest" substitui o "tools".
+    - name: Setup Android SDK, NDK & CMake
       uses: android-actions/setup-android@v3
-
-    - name: Install Android NDK & CMake
-      run: |
-        sdkmanager --install "ndk;25.2.9519653" "cmake;3.22.1"
+      with:
+        packages: 'cmdline-tools;latest ndk;25.2.9519653 cmake;3.22.1'
         
     - name: Configure local.properties
       run: |
-        echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
-        echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> android/local.properties
-
-    # Baixa dependências de áudio (obrigatórias para o CMake compilar o RSDKv5 no Android)
-    - name: Download Audio Dependencies
-      run: |
-        mkdir -p dependencies/android
-        git clone https://github.com/xiph/ogg.git dependencies/android/libogg
-        git clone https://github.com/xiph/theora.git dependencies/android/libtheora
+        echo "sdk.dir=$ANDROID_SDK_ROOT" > dependencies/android/local.properties
+        echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> dependencies/android/local.properties
 
     - name: Create Engine Symlinks
       run: |
-        cd android/app/jni
-        # No RSDKv5u-Origins, o jni está 3 níveis abaixo da raiz (app -> android -> raiz)
-        ln -s ../../../RSDKv5 RSDKv5
-        ln -s ../../../Game Game
+        cd dependencies/android/app/jni
+        ln -s ../../../../RSDKv5 RSDKv5
+        ln -s ../../../../Game Game
 
     - name: Build with Gradle
       run: |
-        cd android
+        cd dependencies/android
         chmod +x gradlew
         ./gradlew assembleDebug
 
@@ -61,5 +53,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: rsdkv5u-android-debug-apk
-        path: android/app/build/outputs/apk/debug/app-debug.apk
-        
+        path: dependencies/android/app/build/outputs/apk/debug/app-debug.apk
